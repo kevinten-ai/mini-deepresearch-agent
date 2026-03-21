@@ -4,6 +4,7 @@
   "installCommand": "npm install && cd web && npm install",
   "buildCommand": "cd web && npx vite build",
   "outputDirectory": "web/dist",
+  "regions": ["hkg1"],
   "functions": {
     "api/*.ts": {
       "maxDuration": 300

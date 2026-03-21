@@ -16,7 +16,10 @@ export class Orchestrator extends EventEmitter {
     this.toolRegistry = toolRegistry;
   }
 
-  async research(request: ResearchRequest): Promise<ResearchResult> {
+  async research(
+    request: ResearchRequest,
+    options?: { deadline?: number; signal?: AbortSignal },
+  ): Promise<ResearchResult> {
     const id = uuidv4();
     const startTime = Date.now();
 
@@ -27,7 +30,16 @@ export class Orchestrator extends EventEmitter {
       agentCount: request.agentCount,
     });
 
-    const perspectives = await this.analyzeQuery(request.query, request.agentCount);
+    let perspectives: string[];
+    try {
+      perspectives = await this.analyzeQuery(request.query, request.agentCount);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error('[analyzeQuery failed, using defaults]', errMsg);
+      // Fall back to default perspectives so research can still proceed
+      const defaults = ['comprehensive overview', 'technical details', 'practical applications', 'future implications'];
+      perspectives = defaults.slice(0, request.agentCount);
+    }
 
     const tools =
       request.enabledTools.length > 0
@@ -44,12 +56,14 @@ export class Orchestrator extends EventEmitter {
             maxIterations: request.maxIterations,
             tools,
           },
-          (msgs, t) => this.llm.chat(msgs, t),
+          (msgs, t, onToken, signal) => this.llm.chatStream(msgs, t, onToken, signal),
+          { deadline: options?.deadline, signal: options?.signal },
         );
 
         const agentEvents = [
           'agent:start', 'agent:think', 'agent:act', 'agent:tool_result',
           'agent:observe', 'agent:evaluate', 'agent:state_rebuild', 'agent:complete',
+          'agent:token',
         ];
         for (const event of agentEvents) {
           agent.on(event, (data) => this.emit(event, data));
@@ -59,30 +73,81 @@ export class Orchestrator extends EventEmitter {
       },
     );
 
-    const agentResults = await Promise.all(agentPromises);
+    const settled = await Promise.allSettled(agentPromises);
+    const agentResults: AgentResult[] = [];
+    const agentErrors: string[] = [];
+
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        agentResults.push(result.value);
+      } else {
+        const errMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        agentErrors.push(errMsg);
+        console.error('[agent failed]', errMsg);
+      }
+    }
+
+    if (agentResults.length === 0) {
+      throw new Error(
+        `All ${perspectives.length} agents failed. Errors: ${agentErrors.map((e, i) => `Agent ${i + 1}: ${e.slice(0, 100)}`).join('; ')}`,
+      );
+    }
+
+    if (agentErrors.length > 0) {
+      this.emit('error:partial', {
+        message: `${agentErrors.length} of ${perspectives.length} agents failed, continuing with partial results`,
+        failedCount: agentErrors.length,
+        successCount: agentResults.length,
+      });
+    }
 
     this.emit('synthesis:start', { reportCount: agentResults.length });
 
-    const synthesizer = new Synthesizer((msgs) => this.llm.chat(msgs));
-    const synthesis = await synthesizer.synthesize(
-      request.query,
-      agentResults,
-      request.mode,
-    );
+    let finalOutput: string;
+    let citations: ResearchResult['citations'] = [];
+    let synthesisTokens = 0;
+
+    try {
+      const onSynthToken = () => {
+        this.emit('synthesis:token', {});
+      };
+      const synthesizer = new Synthesizer(
+        (msgs) => this.llm.chatStream(msgs, undefined, onSynthToken, options?.signal),
+      );
+      const synthesis = await synthesizer.synthesize(
+        request.query,
+        agentResults,
+        request.mode,
+      );
+      finalOutput = synthesis.content;
+      citations = synthesis.citations;
+      synthesisTokens = synthesis.tokens;
+    } catch (err) {
+      // Fallback: concatenate agent reports directly
+      console.error('[synthesis failed, using fallback]', err instanceof Error ? err.message : err);
+      this.emit('synthesis:complete', { output: null, fallback: true });
+      finalOutput = agentResults
+        .map((r) => `## ${r.agentId}: ${r.perspective}\n\n${r.finalReport}`)
+        .join('\n\n---\n\n');
+    }
+
+    this.emit('synthesis:complete', { output: finalOutput });
+
+    // Media enrichment: replace ![IMAGE:...] placeholders with generated images
+    finalOutput = await this.enrichMedia(finalOutput);
 
     const result: ResearchResult = {
       id,
       query: request.query,
       mode: request.mode,
       agentResults,
-      finalOutput: synthesis.content,
-      citations: synthesis.citations,
+      finalOutput,
+      citations,
       totalTokens:
-        agentResults.reduce((sum, r) => sum + r.totalTokens, 0) + synthesis.tokens,
+        agentResults.reduce((sum, r) => sum + r.totalTokens, 0) + synthesisTokens,
       totalDuration: Date.now() - startTime,
     };
 
-    this.emit('synthesis:complete', { output: synthesis.content });
     this.emit('research:complete', {
       id,
       totalDuration: result.totalDuration,
@@ -90,6 +155,48 @@ export class Orchestrator extends EventEmitter {
     });
 
     return result;
+  }
+
+  /** Replace ![IMAGE:description] placeholders with AI-generated images via CogView API */
+  private async enrichMedia(content: string): Promise<string> {
+    const regex = /!\[IMAGE:(.*?)\]/g;
+    const matches = [...content.matchAll(regex)];
+
+    if (matches.length === 0) return content;
+
+    this.emit('media:start', { imageCount: matches.length });
+
+    let enriched = content;
+    let generated = 0;
+
+    for (let i = 0; i < matches.length; i++) {
+      const match = matches[i];
+      const description = match[1];
+
+      this.emit('media:progress', {
+        index: i + 1,
+        total: matches.length,
+        type: 'image',
+        description,
+      });
+
+      try {
+        const imageUrl = await this.llm.generateImage(description);
+        if (imageUrl) {
+          enriched = enriched.replace(match[0], `![${description}](${imageUrl})`);
+          generated++;
+        } else {
+          // Remove placeholder if generation failed
+          enriched = enriched.replace(match[0], `*[Image: ${description}]*`);
+        }
+      } catch (err) {
+        console.error(`[image generation failed for "${description}"]`, err);
+        enriched = enriched.replace(match[0], `*[Image: ${description}]*`);
+      }
+    }
+
+    this.emit('media:complete', { generated, total: matches.length });
+    return enriched;
   }
 
   private async analyzeQuery(

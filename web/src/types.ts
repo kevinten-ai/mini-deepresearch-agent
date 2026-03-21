@@ -12,6 +12,8 @@ export interface AgentState {
   maxRounds: number;
   completeness: number;
   iterations: IterationView[];
+  /** Characters generated so far in current streaming LLM call */
+  streamingChars: number;
 }
 
 export interface IterationView {
@@ -43,4 +45,9 @@ export interface ResearchState {
   totalTokens: number;
   totalDuration: number;
   events: SSEEvent[];
+  errorMessage: string | null;
+  synthesisStatus: 'idle' | 'running' | 'complete';
+  mediaStatus: 'idle' | 'running' | 'complete';
+  mediaProgress: { index: number; total: number; description: string } | null;
+  showReport: boolean;
 }

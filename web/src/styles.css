@@ -1,0 +1,310 @@
+:root {
+  /* Backgrounds */
+  --bg-root: #0a0e1a;
+  --bg-surface: #111827;
+  --bg-elevated: #1a2035;
+  --bg-hover: #1e2a42;
+  --bg-glow: rgba(6, 182, 212, 0.04);
+
+  /* Text */
+  --text-primary: #e8edf5;
+  --text-secondary: #8b98b0;
+  --text-muted: #566178;
+
+  /* Phase Colors */
+  --phase-think: #f59e0b;
+  --phase-think-bg: rgba(245, 158, 11, 0.08);
+  --phase-think-border: rgba(245, 158, 11, 0.25);
+  --phase-act: #3b82f6;
+  --phase-act-bg: rgba(59, 130, 246, 0.08);
+  --phase-act-border: rgba(59, 130, 246, 0.25);
+  --phase-observe: #a78bfa;
+  --phase-observe-bg: rgba(167, 139, 250, 0.08);
+  --phase-observe-border: rgba(167, 139, 250, 0.25);
+  --phase-evaluate: #f43f5e;
+  --phase-evaluate-bg: rgba(244, 63, 94, 0.08);
+  --phase-evaluate-border: rgba(244, 63, 94, 0.25);
+  --phase-rebuild: #06b6d4;
+  --phase-rebuild-bg: rgba(6, 182, 212, 0.08);
+  --phase-rebuild-border: rgba(6, 182, 212, 0.25);
+
+  /* Status */
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --accent: #06b6d4;
+
+  /* Border */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-light: rgba(255, 255, 255, 0.1);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Font */
+  --font-display: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-display);
+  background: var(--bg-root);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px var(--glow-color, rgba(6, 182, 212, 0.3)); }
+  50% { box-shadow: 0 0 20px var(--glow-color, rgba(6, 182, 212, 0.5)); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes progress-stripe {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes data-flow {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@keyframes ripple {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+@keyframes typewriter {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes blink-caret {
+  from, to { border-right-color: transparent; }
+  50% { border-right-color: var(--accent); }
+}
+
+@keyframes scale-in {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes sweep {
+  0% { left: -30%; }
+  100% { left: 130%; }
+}
+
+/* Pipeline progress bar */
+.pipeline-stage {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Phase connector line */
+.phase-connector {
+  position: relative;
+}
+.phase-connector::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  top: 100%;
+  width: 2px;
+  height: 12px;
+  background: linear-gradient(to bottom, var(--border-light), transparent);
+}
+.phase-connector:last-child::after {
+  display: none;
+}
+
+/* Smooth scroll for thinking process */
+.thinking-scroll {
+  scroll-behavior: smooth;
+}
+
+/* Architecture diagram styles */
+.arch-node {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: var(--bg-elevated);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-align: center;
+  transition: all 0.3s;
+  position: relative;
+}
+.arch-node:hover {
+  border-color: var(--accent);
+  background: var(--bg-glow);
+}
+.arch-node.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+}
+
+/* Synthesis animation */
+.synthesis-glow {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.05), rgba(6, 182, 212, 0.05));
+  animation: scale-in 0.5s ease-out;
+}
+
+/* Staggered entrance animations */
+.stagger-1 { animation: slideUp 0.6s ease-out 0.0s backwards; }
+.stagger-2 { animation: slideUp 0.6s ease-out 0.12s backwards; }
+.stagger-3 { animation: slideUp 0.6s ease-out 0.24s backwards; }
+.stagger-4 { animation: slideUp 0.6s ease-out 0.36s backwards; }
+.stagger-5 { animation: slideUp 0.6s ease-out 0.48s backwards; }
+.stagger-6 { animation: slideUp 0.6s ease-out 0.60s backwards; }
+
+/* Flash effect for new timeline events */
+@keyframes flash-in {
+  0% { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  100% { background: transparent; }
+}
+.event-flash {
+  animation: flash-in 1s ease-out;
+}
+
+/* Architecture data flow animation */
+@keyframes flow-right {
+  0% { transform: translateX(-8px); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(8px); opacity: 0; }
+}
+.arch-arrow-animated {
+  position: relative;
+}
+.arch-arrow-animated::after {
+  content: '›';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--accent);
+  font-size: 14px;
+  animation: flow-right 1.5s ease-in-out infinite;
+}
+
+/* Completeness counter pop */
+@keyframes counter-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+/* Educational tooltip */
+@keyframes tooltip-reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Gradient text shimmer for hero */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Phase badge glow */
+@keyframes phase-glow {
+  0%, 100% { box-shadow: 0 0 4px var(--glow-color, rgba(6, 182, 212, 0.3)); }
+  50% { box-shadow: 0 0 12px var(--glow-color, rgba(6, 182, 212, 0.6)); }
+}
+
+/* Smooth expand/collapse */
+@keyframes expand-down {
+  from { max-height: 0; opacity: 0; }
+  to { max-height: 500px; opacity: 1; }
+}
+
+/* Button hover shimmer */
+.btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  transition: left 0.5s ease;
+}
+.btn-shimmer:hover::after {
+  left: 100%;
+}
+
+/* Thinking process scroll with indicator */
+.thinking-scroll::-webkit-scrollbar { width: 6px; }
+.thinking-scroll::-webkit-scrollbar-track { background: var(--bg-root); }
+.thinking-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, var(--accent), var(--phase-observe));
+  border-radius: 10px;
+}
+
+/* Interactive arch node */
+.arch-node-interactive {
+  cursor: default;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.arch-node-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.15);
+  border-color: var(--accent) !important;
+}
+
+/* Phase panel educational hint */
+.phase-hint {
+  animation: tooltip-reveal 0.3s ease-out;
+}

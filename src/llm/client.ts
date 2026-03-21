@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import type { Tool } from '../types.js';
 
 interface LLMConfig {
@@ -7,29 +6,38 @@ interface LLMConfig {
   model: string;
 }
 
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
-  tool_calls?: OpenAI.Chat.ChatCompletionMessageToolCall[];
+  tool_calls?: ToolCall[];
   tool_call_id?: string;
 }
 
 export interface LLMResponse {
   content: string | null;
-  toolCalls: OpenAI.Chat.ChatCompletionMessageToolCall[];
+  toolCalls: ToolCall[];
   usage: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
 export class LLMClient {
-  private client: OpenAI;
+  private apiKey: string;
+  private baseURL: string;
   private model: string;
 
   constructor(config: LLMConfig) {
-    this.client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+    this.apiKey = config.apiKey;
+    // Ensure baseURL ends without trailing slash
+    this.baseURL = config.baseURL.replace(/\/+$/, '');
     this.model = config.model;
   }
 
-  formatTools(tools: Tool[]): OpenAI.Chat.ChatCompletionTool[] {
+  formatTools(tools: Tool[]): Array<{ type: 'function'; function: Record<string, unknown> }> {
     return tools.map((t) => ({
       type: 'function' as const,
       function: {
@@ -40,27 +48,189 @@ export class LLMClient {
     }));
   }
 
+  /** Generate an image using CogView API (same base URL & API key). Returns URL or null on failure. */
+  async generateImage(prompt: string): Promise<string | null> {
+    try {
+      const response = await fetch(`${this.baseURL}/images/generations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({ model: 'cogview-3-plus', prompt }),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.data?.[0]?.url || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Generate a video using CogVideoX API. Returns task ID for async polling. */
+  async generateVideoTask(prompt: string): Promise<string | null> {
+    try {
+      const response = await fetch(`${this.baseURL}/videos/generations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({ model: 'cogvideox', prompt }),
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.id || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Poll for async video generation result. Returns video URL or null. */
+  async pollVideoResult(taskId: string, maxAttempts = 30): Promise<string | null> {
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const response = await fetch(`${this.baseURL}/async-result/${taskId}`, {
+          headers: { Authorization: `Bearer ${this.apiKey}` },
+        });
+        if (!response.ok) continue;
+        const data = await response.json();
+        if (data.task_status === 'SUCCESS') {
+          return data.video_result?.[0]?.url || null;
+        }
+        if (data.task_status === 'FAIL') return null;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
   async chat(messages: LLMMessage[], tools?: Tool[]): Promise<LLMResponse> {
-    const params: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+    return this.chatStream(messages, tools);
+  }
+
+  /**
+   * Streaming LLM call. Uses `stream: true` to receive tokens incrementally.
+   * Calls `onToken` for each content delta, keeping SSE connections alive.
+   * Returns the same LLMResponse as the non-streaming `chat()`.
+   */
+  async chatStream(
+    messages: LLMMessage[],
+    tools?: Tool[],
+    onToken?: (token: string) => void,
+    signal?: AbortSignal,
+  ): Promise<LLMResponse> {
+    const body: Record<string, unknown> = {
       model: this.model,
-      messages: messages as OpenAI.Chat.ChatCompletionMessageParam[],
+      messages,
+      stream: true,
+      stream_options: { include_usage: true },
     };
 
     if (tools && tools.length > 0) {
-      params.tools = this.formatTools(tools);
+      body.tools = this.formatTools(tools);
     }
 
-    const response = await this.client.chat.completions.create(params);
-    const choice = response.choices[0];
-
-    return {
-      content: choice.message.content,
-      toolCalls: choice.message.tool_calls || [],
-      usage: {
-        promptTokens: response.usage?.prompt_tokens || 0,
-        completionTokens: response.usage?.completion_tokens || 0,
-        totalTokens: response.usage?.total_tokens || 0,
+    const response = await fetch(`${this.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.apiKey}`,
       },
-    };
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`LLM API error ${response.status}: ${errorText}`);
+    }
+
+    if (!response.body) {
+      throw new Error('LLM API returned empty response body for streaming');
+    }
+
+    let content = '';
+    const toolCallsMap = new Map<number, ToolCall>();
+    let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ')) continue;
+        const payload = trimmed.slice(6);
+        if (payload === '[DONE]') continue;
+
+        try {
+          const chunk = JSON.parse(payload);
+          const delta = chunk.choices?.[0]?.delta;
+
+          if (delta?.content) {
+            content += delta.content;
+            onToken?.(delta.content);
+          }
+
+          // Accumulate streamed tool calls by index
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              if (!toolCallsMap.has(idx)) {
+                toolCallsMap.set(idx, {
+                  id: tc.id || '',
+                  type: 'function',
+                  function: { name: tc.function?.name || '', arguments: '' },
+                });
+              }
+              const existing = toolCallsMap.get(idx)!;
+              if (tc.id) existing.id = tc.id;
+              if (tc.function?.name) existing.function.name = tc.function.name;
+              if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+            }
+            // Emit a synthetic token to keep connection alive during tool call streaming
+            onToken?.('');
+          }
+
+          // Usage is typically in the final chunk
+          if (chunk.usage) {
+            usage = {
+              promptTokens: chunk.usage.prompt_tokens ?? 0,
+              completionTokens: chunk.usage.completion_tokens ?? 0,
+              totalTokens: chunk.usage.total_tokens ?? 0,
+            };
+          }
+        } catch {
+          // Skip malformed chunks
+        }
+      }
+    }
+
+    // Estimate usage if the API didn't provide it
+    if (usage.totalTokens === 0) {
+      const toolArgsLen = [...toolCallsMap.values()].reduce(
+        (s, t) => s + t.function.arguments.length,
+        0,
+      );
+      usage.completionTokens = Math.ceil((content.length + toolArgsLen) / 4);
+      usage.totalTokens = usage.completionTokens;
+    }
+
+    const toolCalls = [...toolCallsMap.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, tc]) => tc);
+
+    return { content: content || null, toolCalls, usage };
   }
 }

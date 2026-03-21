@@ -33,11 +33,27 @@ Rules:
 - Identify and resolve any conflicts between reports
 - Preserve all important findings and citations
 - ${modeInstruction}
-- At the end, list all citations in a "## References" section`,
+- At the end, list all citations in a "## References" section
+
+Visual Content Guidelines:
+- Include Mermaid diagrams where they help illustrate the content. Use fenced code blocks with the "mermaid" language identifier. Good use cases:
+  - Flowcharts for process explanations (graph TD or graph LR)
+  - Mind maps for concept relationships (mindmap)
+  - Timeline diagrams for chronological events (timeline)
+  - Comparison/classification charts
+  Example: \`\`\`mermaid
+  graph LR
+    A[Input] --> B[Process]
+    B --> C[Output]
+  \`\`\`
+- For key concepts or sections that would benefit from an AI-generated illustration, add an image placeholder with this exact syntax: ![IMAGE:description of the illustration needed]
+  - Use 2-4 image placeholders for important concepts
+  - The description should be specific enough for an AI image generator
+  - Example: ![IMAGE:a neural network architecture diagram showing layers of interconnected nodes with data flowing from input to output]`,
       },
       {
         role: 'user',
-        content: `Original Question: ${query}\n\n# Individual Agent Reports\n\n${reportsSection}\n\nPlease synthesize these reports into a single ${mode === 'report' ? 'comprehensive report' : 'concise answer'}.`,
+        content: `Original Question: ${query}\n\n# Individual Agent Reports\n\n${reportsSection}\n\nPlease synthesize these reports into a single ${mode === 'report' ? 'comprehensive report with Mermaid diagrams and image placeholders' : 'concise answer'}.`,
       },
     ];
 

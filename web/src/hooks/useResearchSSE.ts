@@ -10,12 +10,20 @@ const initialState: ResearchState = {
   totalTokens: 0,
   totalDuration: 0,
   events: [],
+  errorMessage: null,
+  synthesisStatus: 'idle',
+  mediaStatus: 'idle',
+  mediaProgress: null,
+  showReport: false,
 };
 
 export function useResearchSSE() {
   const [state, setState] = useState<ResearchState>(initialState);
   const abortRef = useRef<AbortController | null>(null);
   const startedRef = useRef(false);
+  // Throttle high-frequency agent:token events to prevent excessive re-renders
+  const tokenBufRef = useRef<Map<string, number>>(new Map());
+  const tokenFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startResearch = useCallback(
     async (request: {
@@ -43,7 +51,27 @@ export function useResearchSSE() {
           signal: abortRef.current.signal,
         });
 
-        const reader = response.body!.getReader();
+        // Check HTTP status before reading body
+        if (!response.ok) {
+          let errMsg = `Server error (${response.status})`;
+          try {
+            const text = await response.text();
+            if (text) errMsg += `: ${text.slice(0, 200)}`;
+          } catch { /* ignore read error */ }
+          setState((prev) => ({ ...prev, status: 'error', errorMessage: errMsg }));
+          return;
+        }
+
+        if (!response.body) {
+          setState((prev) => ({
+            ...prev,
+            status: 'error',
+            errorMessage: 'Server returned empty response body',
+          }));
+          return;
+        }
+
+        const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
@@ -59,17 +87,66 @@ export function useResearchSSE() {
             if (line.startsWith('data: ')) {
               try {
                 const event: SSEEvent = JSON.parse(line.slice(6));
+                // Throttle agent:token events — buffer and flush every 500ms
+                if (event.type === 'agent:token' || event.type === 'synthesis:token') {
+                  if (event.type === 'agent:token') {
+                    tokenBufRef.current.set(
+                      event.data.agentId as string,
+                      event.data.chars as number,
+                    );
+                  }
+                  if (!tokenFlushRef.current) {
+                    tokenFlushRef.current = setTimeout(() => {
+                      const updates = new Map(tokenBufRef.current);
+                      tokenBufRef.current.clear();
+                      tokenFlushRef.current = null;
+                      if (updates.size > 0) {
+                        setState((prev) => {
+                          let agents = prev.agents;
+                          for (const [agentId, chars] of updates) {
+                            agents = updateAgent(agents, agentId, (a) => ({
+                              ...a,
+                              streamingChars: chars,
+                            }));
+                          }
+                          return agents === prev.agents ? prev : { ...prev, agents };
+                        });
+                      }
+                    }, 500);
+                  }
+                  continue;
+                }
                 setState((prev) => processEvent(prev, event));
               } catch {
-                /* ignore parse errors */
+                /* ignore individual parse errors */
               }
             }
           }
         }
+
+        // If stream ended without research:complete or error event, check final state
+        setState((prev) => {
+          if (prev.status === 'running') {
+            // Stream ended unexpectedly
+            return {
+              ...prev,
+              status: 'error',
+              errorMessage: 'Connection closed unexpectedly. The research may have timed out.',
+            };
+          }
+          return prev;
+        });
       } catch (error: any) {
-        if (error.name !== 'AbortError') {
-          setState((prev) => ({ ...prev, status: 'error' }));
+        if (error.name === 'AbortError') return;
+
+        let errorMessage = 'Connection failed';
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          errorMessage = 'Network error: Cannot reach the server. Check your connection.';
+        } else if (error.message) {
+          errorMessage = error.message;
         }
+
+        setState((prev) => ({ ...prev, status: 'error', errorMessage }));
       }
     },
     [],
@@ -77,14 +154,29 @@ export function useResearchSSE() {
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
+    if (tokenFlushRef.current) clearTimeout(tokenFlushRef.current);
+    tokenBufRef.current.clear();
     setState((prev) => ({ ...prev, status: 'complete' }));
+  }, []);
+
+  const retry = useCallback(() => {
+    startedRef.current = false;
+    setState(initialState);
   }, []);
 
   const selectAgent = useCallback((agentId: string) => {
     setState((prev) => ({ ...prev, selectedAgentId: agentId }));
   }, []);
 
-  return { state, startResearch, stop, selectAgent };
+  const showReport = useCallback(() => {
+    setState((prev) => ({ ...prev, showReport: true }));
+  }, []);
+
+  const hideReport = useCallback(() => {
+    setState((prev) => ({ ...prev, showReport: false }));
+  }, []);
+
+  return { state, startResearch, stop, retry, selectAgent, showReport, hideReport };
 }
 
 function processEvent(prev: ResearchState, event: SSEEvent): ResearchState {
@@ -102,6 +194,7 @@ function processEvent(prev: ResearchState, event: SSEEvent): ResearchState {
         maxRounds: 10,
         completeness: 0,
         iterations: [],
+        streamingChars: 0,
       };
       next.agents = [...next.agents, agent];
       if (!next.selectedAgentId) next.selectedAgentId = agent.agentId;
@@ -112,6 +205,7 @@ function processEvent(prev: ResearchState, event: SSEEvent): ResearchState {
         ...a,
         status: 'thinking',
         currentRound: event.data.round as number,
+        streamingChars: 0,
         iterations: upsertIteration(a.iterations, event.data.round as number, (it) => ({
           ...it,
           thinking: event.data.reasoning as string,
@@ -194,10 +288,32 @@ function processEvent(prev: ResearchState, event: SSEEvent): ResearchState {
       next.agents = updateAgent(next.agents, event.data.agentId as string, (a) => ({
         ...a,
         status: 'complete',
+        streamingChars: 0,
       }));
+      break;
+    case 'synthesis:start':
+      next.synthesisStatus = 'running';
+      break;
+    case 'synthesis:complete':
+      next.synthesisStatus = 'complete';
+      break;
+    case 'media:start':
+      next.mediaStatus = 'running';
+      break;
+    case 'media:progress':
+      next.mediaProgress = {
+        index: event.data.index as number,
+        total: event.data.total as number,
+        description: event.data.description as string,
+      };
+      break;
+    case 'media:complete':
+      next.mediaStatus = 'complete';
+      next.mediaProgress = null;
       break;
     case 'research:complete':
       next.status = 'complete';
+      next.synthesisStatus = 'complete';
       next.finalOutput = (event.data.finalOutput as string) || null;
       next.citations = (event.data.citations as any[]) || [];
       next.totalTokens = (event.data.totalTokens as number) || 0;
@@ -205,6 +321,7 @@ function processEvent(prev: ResearchState, event: SSEEvent): ResearchState {
       break;
     case 'error':
       next.status = 'error';
+      next.errorMessage = (event.data.message as string) || 'Unknown error';
       break;
   }
   return next;

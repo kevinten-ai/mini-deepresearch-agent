@@ -8,18 +8,32 @@ import type {
 } from '../types.js';
 import type { LLMMessage, LLMResponse } from '../llm/client.js';
 
-type LLMChatFn = (messages: LLMMessage[], tools?: Tool[]) => Promise<LLMResponse>;
+type LLMChatFn = (
+  messages: LLMMessage[],
+  tools?: Tool[],
+  onToken?: (token: string) => void,
+  signal?: AbortSignal,
+) => Promise<LLMResponse>;
+
+export interface AgentRunOptions {
+  /** Unix timestamp (ms) after which the agent should stop starting new iterations */
+  deadline?: number;
+  /** AbortSignal to cancel in-flight LLM calls immediately */
+  signal?: AbortSignal;
+}
 
 export class ResearchAgent extends EventEmitter {
   private config: AgentConfig;
   private llmChat: LLMChatFn;
   private evolvingReport: string = '';
   private totalTokens: number = 0;
+  private options: AgentRunOptions;
 
-  constructor(config: AgentConfig, llmChat: LLMChatFn) {
+  constructor(config: AgentConfig, llmChat: LLMChatFn, options?: AgentRunOptions) {
     super();
     this.config = config;
     this.llmChat = llmChat;
+    this.options = options || {};
   }
 
   async run(): Promise<AgentResult> {
@@ -32,10 +46,28 @@ export class ResearchAgent extends EventEmitter {
     });
 
     for (let round = 1; round <= this.config.maxIterations; round++) {
-      const iteration = await this.runIteration(round);
-      iterations.push(iteration);
+      // Check deadline before starting a new iteration
+      if (this.options.deadline && Date.now() > this.options.deadline) {
+        console.log(`[agent ${this.config.agentId}] Deadline reached at round ${round}, stopping`);
+        break;
+      }
+      if (this.options.signal?.aborted) break;
 
-      if (!iteration.evaluate.shouldContinue) break;
+      try {
+        const iteration = await this.runIteration(round);
+        iterations.push(iteration);
+
+        if (!iteration.evaluate.shouldContinue) break;
+      } catch (err) {
+        // If aborted by deadline signal, stop gracefully (not an error)
+        if (this.options.signal?.aborted) break;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[agent ${this.config.agentId}] Iteration ${round} failed:`, errMsg);
+        // If we have at least one successful iteration, return partial results
+        if (iterations.length > 0) break;
+        // Otherwise propagate the error
+        throw err;
+      }
     }
 
     const result: AgentResult = {
@@ -64,8 +96,32 @@ export class ResearchAgent extends EventEmitter {
 
     const actions: ActionRecord[] = [];
 
+    // Throttled token emitter — keeps the SSE connection alive during long LLM calls
+    let streamCharCount = 0;
+    let lastTokenEmit = 0;
+    const onToken = (token: string) => {
+      streamCharCount += token.length;
+      const now = Date.now();
+      if (now - lastTokenEmit > 300) {
+        this.emit('agent:token', {
+          agentId: this.config.agentId,
+          round,
+          chars: streamCharCount,
+        });
+        lastTokenEmit = now;
+      }
+    };
+
     // Multi-turn tool calling loop
-    let response = await this.llmChat(messages, this.config.tools);
+    let response;
+    try {
+      response = await this.llmChat(messages, this.config.tools, onToken, this.options.signal);
+    } catch (err) {
+      if (this.options.signal?.aborted) throw new Error('Aborted by deadline');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[agent ${this.config.agentId}] LLM call failed at round ${round}:`, errMsg);
+      throw new Error(`Agent ${this.config.agentId} LLM call failed (round ${round}): ${errMsg}`);
+    }
     this.totalTokens += response.usage.totalTokens;
 
     while (response.toolCalls.length > 0) {
@@ -75,7 +131,12 @@ export class ResearchAgent extends EventEmitter {
         );
         if (!tool) continue;
 
-        const params = JSON.parse(toolCall.function.arguments);
+        let params: Record<string, any>;
+        try {
+          params = JSON.parse(toolCall.function.arguments);
+        } catch {
+          params = {};
+        }
         this.emit('agent:act', {
           agentId: this.config.agentId,
           round,
@@ -84,7 +145,14 @@ export class ResearchAgent extends EventEmitter {
         });
 
         const actionStart = Date.now();
-        const result = await tool.execute(params);
+        let result;
+        try {
+          result = await tool.execute(params);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error(`[agent ${this.config.agentId}] Tool ${toolCall.function.name} failed:`, errMsg);
+          result = { success: false, data: null, summary: `[Tool error: ${errMsg.slice(0, 200)}]`, duration: 0 };
+        }
         const action: ActionRecord = {
           tool: toolCall.function.name,
           params,
@@ -113,7 +181,15 @@ export class ResearchAgent extends EventEmitter {
         });
       }
 
-      response = await this.llmChat(messages, this.config.tools);
+      try {
+        response = await this.llmChat(messages, this.config.tools, onToken, this.options.signal);
+      } catch (err) {
+        if (this.options.signal?.aborted) break;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[agent ${this.config.agentId}] LLM call failed at round ${round} (continuation):`, errMsg);
+        // Break out of tool loop — use whatever content we have so far
+        break;
+      }
       this.totalTokens += response.usage.totalTokens;
     }
 

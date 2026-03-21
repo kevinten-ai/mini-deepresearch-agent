@@ -167,8 +167,13 @@ export type SSEEventType =
   | 'agent:evaluate'
   | 'agent:state_rebuild'
   | 'agent:complete'
+  | 'agent:token'
   | 'synthesis:start'
+  | 'synthesis:token'
   | 'synthesis:complete'
+  | 'media:start'
+  | 'media:progress'
+  | 'media:complete'
   | 'research:complete'
   | 'error';
 
