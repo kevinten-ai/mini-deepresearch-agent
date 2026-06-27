@@ -6,6 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "dev:web": "cd web && npm run dev",
     "build": "tsc && cd web && npm run build",
+    "lint": "tsc --noEmit && cd web && npx tsc --noEmit",
+    "type-check": "tsc --noEmit && cd web && npx tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },

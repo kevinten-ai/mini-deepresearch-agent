@@ -165,14 +165,23 @@ export default defineConfig({
 `.env.example`:
 ```
 # Volcengine Ark CodingPlan chat configuration
-ARK_API_KEY=your_ark_api_key
+ARK_API_KEY=your_ark_api_key_here
 ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
 ARK_CHAT_MODEL=doubao-seed-2-0-code-preview-260215
 
+# Optional media providers.
+# Leave unset unless a compatible Volcengine image/video API has been verified.
+ARK_IMAGE_API_KEY=
+ARK_IMAGE_BASE_URL=
+ARK_IMAGE_MODEL=
+ARK_VIDEO_API_KEY=
+ARK_VIDEO_BASE_URL=
+ARK_VIDEO_MODEL=
+
 # Tool API Keys
-TAVILY_API_KEY=your_tavily_api_key
-SERPER_API_KEY=your_serper_api_key
-JINA_API_KEY=your_jina_api_key
+TAVILY_API_KEY=your_tavily_api_key_here
+SERPER_API_KEY=your_serper_api_key_here
+JINA_API_KEY=your_jina_api_key_here
 
 # Server
 PORT=3000

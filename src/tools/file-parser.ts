@@ -26,8 +26,6 @@ export function createFileParserTool(): Tool {
       const filePath = params.filePath as string;
       try {
         if (filePath.endsWith('.pdf')) {
-          // pdf-parse does not ship TypeScript declarations.
-          // @ts-expect-error missing pdf-parse declarations
           const pdfParse = (await import('pdf-parse')).default as PdfParse;
           const buffer = await readFile(filePath);
           const pdf = await pdfParse(buffer);
