@@ -251,13 +251,21 @@ export class ResearchAgent extends EventEmitter {
   }
 
   private buildSystemPrompt(round: number): string {
+    const hasTools = this.config.tools.length > 0;
+    const actionInstruction = hasTools
+      ? '2. ACT: Use the available tools to fill knowledge gaps. You can call multiple tools.'
+      : '2. ACT: No external tools are available. Use your general knowledge, be explicit about uncertainty, and do not attempt tool-call markup.';
+    const citationInstruction = hasTools
+      ? '- Include source URLs as citations in the report'
+      : '- Do not fabricate source URLs or citations; state when no external sources were consulted';
+
     return `You are a research agent investigating a specific perspective of a research question.
 Your perspective: "${this.config.perspective}"
 Current round: ${round}/${this.config.maxIterations}
 
 ## Your Task
 1. THINK: Analyze the current state of your research. What do you know? What gaps remain?
-2. ACT: Use the available tools to fill knowledge gaps. You can call multiple tools.
+${actionInstruction}
 3. After tool results come back, provide your analysis in the following JSON format:
 
 \`\`\`json
@@ -274,16 +282,23 @@ Current round: ${round}/${this.config.maxIterations}
 
 ## Important Rules
 - The updatedReport should be a COMPLETE, self-contained report, not just new findings
-- Include source URLs as citations in the report
+${citationInstruction}
 - Set shouldContinue=false when completeness >= 80 or you cannot find more useful information
 - Be thorough but concise in your report`;
   }
 
   private buildUserPrompt(round: number): string {
+    const hasTools = this.config.tools.length > 0;
     if (round === 1) {
-      return `Research Question: ${this.config.query}\n\nThis is the first round. Start by searching for key information about this topic from your perspective: "${this.config.perspective}".`;
+      const firstStep = hasTools
+        ? `Start by searching for key information about this topic from your perspective: "${this.config.perspective}".`
+        : `No external tools are enabled. Answer directly from your general knowledge from this perspective: "${this.config.perspective}".`;
+      return `Research Question: ${this.config.query}\n\nThis is the first round. ${firstStep}`;
     }
-    return `Research Question: ${this.config.query}\n\nPrevious Research Report (compressed memory):\n${this.evolvingReport}\n\nContinue your research. Identify remaining gaps and search for additional information. Update the report with any new findings.`;
+    const nextStep = hasTools
+      ? 'Identify remaining gaps and search for additional information.'
+      : 'Identify remaining gaps and refine the answer without using external tools.';
+    return `Research Question: ${this.config.query}\n\nPrevious Research Report (compressed memory):\n${this.evolvingReport}\n\nContinue your research. ${nextStep} Update the report with any new findings.`;
   }
 
   private parseThinkResponse(content: string): {
