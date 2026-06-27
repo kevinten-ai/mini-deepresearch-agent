@@ -15,12 +15,24 @@ export const maxDuration = 300;
 // Leave safety margin for synthesis + cleanup
 const FUNCTION_TIMEOUT_MS = (parseInt(process.env.FUNCTION_TIMEOUT || '60', 10)) * 1000;
 const SAFETY_MARGIN_MS = 10_000;
+const DEFAULT_ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/coding/v3';
+const DEFAULT_ARK_MODEL = 'doubao-seed-2-0-code-preview-260215';
 
 function initOrchestrator(): Orchestrator {
   const llm = new LLMClient({
-    apiKey: process.env.LLM_API_KEY || '',
-    baseURL: process.env.LLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
-    model: process.env.LLM_MODEL || 'glm-4-plus',
+    apiKey: process.env.ARK_API_KEY || '',
+    baseURL: process.env.ARK_BASE_URL || DEFAULT_ARK_BASE_URL,
+    model: process.env.ARK_CHAT_MODEL || DEFAULT_ARK_MODEL,
+    image: {
+      apiKey: process.env.ARK_IMAGE_API_KEY || '',
+      baseURL: process.env.ARK_IMAGE_BASE_URL || '',
+      model: process.env.ARK_IMAGE_MODEL || '',
+    },
+    video: {
+      apiKey: process.env.ARK_VIDEO_API_KEY || '',
+      baseURL: process.env.ARK_VIDEO_BASE_URL || '',
+      model: process.env.ARK_VIDEO_MODEL || '',
+    },
   });
 
   const toolRegistry = new ToolRegistry();
@@ -142,13 +154,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (abortController.signal.aborted || rawMessage.includes('Aborted by deadline')) {
       message = `Research was time-limited (${FUNCTION_TIMEOUT_MS / 1000}s serverless timeout). Results may be partial. Consider reducing agent count or iterations.`;
     } else if (rawMessage.includes('API key') || rawMessage.includes('401') || rawMessage.includes('Unauthorized')) {
-      message = 'API authentication failed. Please check your LLM_API_KEY configuration.';
+      message = 'API authentication failed. Please check your ARK_API_KEY configuration.';
     } else if (rawMessage.includes('429') || rawMessage.includes('rate limit') || rawMessage.includes('Rate limit')) {
       message = 'API rate limit exceeded. Please wait a moment and try again.';
     } else if (rawMessage.includes('timeout') || rawMessage.includes('ETIMEDOUT') || rawMessage.includes('ECONNRESET')) {
       message = 'Connection to the LLM API timed out. The service may be overloaded — please retry.';
     } else if (rawMessage.includes('ENOTFOUND') || rawMessage.includes('ECONNREFUSED')) {
-      message = 'Cannot reach the LLM API server. Please check your LLM_BASE_URL configuration.';
+      message = 'Cannot reach the LLM API server. Please check your ARK_BASE_URL configuration.';
     } else if (rawMessage.includes('All') && rawMessage.includes('agents failed')) {
       message = rawMessage;
     } else if (!rawMessage || rawMessage === 'undefined') {

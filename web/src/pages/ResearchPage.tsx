@@ -799,7 +799,7 @@ function MediaEnrichmentView({ progress }: { progress: { index: number; total: n
       )}
 
       <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 360, lineHeight: 1.6 }}>
-        Using CogView AI to generate illustrations for key concepts in the report.
+        Using the configured AI image provider to generate illustrations for key concepts in the report.
         Mermaid diagrams will be rendered client-side.
       </div>
 
@@ -807,7 +807,7 @@ function MediaEnrichmentView({ progress }: { progress: { index: number; total: n
       <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
         {[
           { icon: '📊', label: 'Mermaid Diagrams', desc: 'Client-side rendering' },
-          { icon: '🖼️', label: 'AI Images', desc: 'CogView API' },
+          { icon: '🖼️', label: 'AI Images', desc: 'Image provider' },
         ].map((m) => (
           <div
             key={m.label}

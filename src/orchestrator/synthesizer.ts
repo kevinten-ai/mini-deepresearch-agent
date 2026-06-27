@@ -3,11 +3,17 @@ import type { LLMMessage, LLMResponse } from '../llm/client.js';
 
 type LLMChatFn = (messages: LLMMessage[]) => Promise<LLMResponse>;
 
+interface SynthesizerOptions {
+  enableImagePlaceholders?: boolean;
+}
+
 export class Synthesizer {
   private llmChat: LLMChatFn;
+  private options: SynthesizerOptions;
 
-  constructor(llmChat: LLMChatFn) {
+  constructor(llmChat: LLMChatFn, options: SynthesizerOptions = {}) {
     this.llmChat = llmChat;
+    this.options = options;
   }
 
   async synthesize(
@@ -23,6 +29,13 @@ export class Synthesizer {
       mode === 'report'
         ? 'Produce a comprehensive, well-structured research report in Markdown with sections, subsections, and inline citations [1][2].'
         : 'Produce a concise, direct answer to the question, citing sources inline.';
+
+    const imageGuidelines = this.options.enableImagePlaceholders
+      ? `- For key concepts or sections that would benefit from an AI-generated illustration, add an image placeholder with this exact syntax: ![IMAGE:description of the illustration needed]
+  - Use 2-4 image placeholders for important concepts
+  - The description should be specific enough for an AI image generator
+  - Example: ![IMAGE:a neural network architecture diagram showing layers of interconnected nodes with data flowing from input to output]`
+      : '- Do not add AI image placeholders. No image generation provider is configured; use Mermaid diagrams and Markdown structure instead.';
 
     const messages: LLMMessage[] = [
       {
@@ -46,14 +59,11 @@ Visual Content Guidelines:
     A[Input] --> B[Process]
     B --> C[Output]
   \`\`\`
-- For key concepts or sections that would benefit from an AI-generated illustration, add an image placeholder with this exact syntax: ![IMAGE:description of the illustration needed]
-  - Use 2-4 image placeholders for important concepts
-  - The description should be specific enough for an AI image generator
-  - Example: ![IMAGE:a neural network architecture diagram showing layers of interconnected nodes with data flowing from input to output]`,
+${imageGuidelines}`,
       },
       {
         role: 'user',
-        content: `Original Question: ${query}\n\n# Individual Agent Reports\n\n${reportsSection}\n\nPlease synthesize these reports into a single ${mode === 'report' ? 'comprehensive report with Mermaid diagrams and image placeholders' : 'concise answer'}.`,
+        content: `Original Question: ${query}\n\n# Individual Agent Reports\n\n${reportsSection}\n\nPlease synthesize these reports into a single ${mode === 'report' ? 'comprehensive report with Mermaid diagrams' : 'concise answer'}.`,
       },
     ];
 

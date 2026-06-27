@@ -6,7 +6,7 @@
 
 **Architecture:** Multi-agent orchestrator dispatches parallel ResearchAgents, each running a Think-Act-Observe-Evaluate loop with Markovian state rebuild (evolving report as compressed memory). Express backend streams SSE events to a React frontend that visualizes the entire research process in real-time.
 
-**Tech Stack:** TypeScript, Node.js, Express, OpenAI SDK (ZhipuAI GLM-4 compatible), Tavily API, Jina Reader API, Vitest, React, Vite, SSE
+**Tech Stack:** TypeScript, Node.js, Express, OpenAI-compatible Volcengine Ark chat API, Tavily API, Jina Reader API, Vitest, React, Vite, SSE
 
 ---
 
@@ -24,7 +24,7 @@
 │   ├── types.ts                    # All core type definitions
 │   │
 │   ├── llm/
-│   │   └── client.ts               # OpenAI-compatible LLM client for GLM-4
+│   │   └── client.ts               # OpenAI-compatible Ark chat client
 │   │
 │   ├── tools/
 │   │   ├── registry.ts             # Tool registry + base interface
@@ -164,10 +164,10 @@ export default defineConfig({
 
 `.env.example`:
 ```
-# LLM Configuration (ZhipuAI GLM-4, OpenAI-compatible)
-LLM_API_KEY=your_zhipuai_api_key
-LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-LLM_MODEL=glm-4-plus
+# Volcengine Ark CodingPlan chat configuration
+ARK_API_KEY=your_ark_api_key
+ARK_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+ARK_CHAT_MODEL=doubao-seed-2-0-code-preview-260215
 
 # Tool API Keys
 TAVILY_API_KEY=your_tavily_api_key
@@ -213,9 +213,9 @@ dotenv.config();
 
 export const config = {
   llm: {
-    apiKey: process.env.LLM_API_KEY || '',
-    baseURL: process.env.LLM_BASE_URL || 'https://open.bigmodel.cn/api/paas/v4',
-    model: process.env.LLM_MODEL || 'glm-4-plus',
+    apiKey: process.env.ARK_API_KEY || '',
+    baseURL: process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/coding/v3',
+    model: process.env.ARK_CHAT_MODEL || 'doubao-seed-2-0-code-preview-260215',
   },
   tools: {
     tavilyApiKey: process.env.TAVILY_API_KEY || '',
@@ -518,7 +518,7 @@ Expected: PASS
 
 ```bash
 git add src/llm/client.ts tests/llm/client.test.ts
-git commit -m "feat: add OpenAI-compatible LLM client for GLM-4"
+git commit -m "feat: add OpenAI-compatible Ark chat client"
 ```
 
 ---
@@ -2372,5 +2372,5 @@ git commit -m "feat: add development scripts and finalize integration"
 
 - **Independent tasks** that can be parallelized: Task 4 (individual tools) can run in parallel. Task 11 components can run in parallel.
 - **Critical path**: Task 1 → 2 → 3 → 6 → 7 → 9 (backend must work before frontend)
-- **Environment variables required**: LLM_API_KEY (ZhipuAI), TAVILY_API_KEY, JINA_API_KEY, SERPER_API_KEY
-- **LLM compatibility**: ZhipuAI GLM-4 supports OpenAI-compatible function calling at `https://open.bigmodel.cn/api/paas/v4/`
+- **Environment variables required**: ARK_API_KEY, ARK_BASE_URL, ARK_CHAT_MODEL, TAVILY_API_KEY, JINA_API_KEY, SERPER_API_KEY
+- **LLM compatibility**: Volcengine Ark CodingPlan chat uses the OpenAI-compatible endpoint at `https://ark.cn-beijing.volces.com/api/coding/v3`

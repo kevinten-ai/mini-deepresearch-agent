@@ -1,6 +1,13 @@
 import { readFile } from 'fs/promises';
 import type { Tool, ToolResult } from '../types.js';
 
+type PdfParseResult = {
+  numpages: number;
+  text: string;
+};
+
+type PdfParse = (dataBuffer: Buffer | Uint8Array | ArrayBuffer) => Promise<PdfParseResult>;
+
 export function createFileParserTool(): Tool {
   return {
     definition: {
@@ -19,7 +26,9 @@ export function createFileParserTool(): Tool {
       const filePath = params.filePath as string;
       try {
         if (filePath.endsWith('.pdf')) {
-          const pdfParse = (await import('pdf-parse')).default;
+          // pdf-parse does not ship TypeScript declarations.
+          // @ts-expect-error missing pdf-parse declarations
+          const pdfParse = (await import('pdf-parse')).default as PdfParse;
           const buffer = await readFile(filePath);
           const pdf = await pdfParse(buffer);
           return {

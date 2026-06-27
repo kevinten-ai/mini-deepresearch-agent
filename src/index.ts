@@ -13,7 +13,7 @@ import { createRouter } from './api/router.js';
 const app = express();
 app.use(express.json());
 
-// Initialize LLM client (OpenAI-compatible for ZhipuAI GLM-4)
+// Initialize LLM client (Volcengine Ark OpenAI-compatible chat API)
 const llm = new LLMClient(config.llm);
 
 // Initialize tool registry

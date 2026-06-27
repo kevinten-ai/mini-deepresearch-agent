@@ -4,6 +4,20 @@ interface LLMConfig {
   apiKey: string;
   baseURL: string;
   model: string;
+  image?: OptionalProviderConfig;
+  video?: OptionalProviderConfig;
+}
+
+interface OptionalProviderConfig {
+  apiKey?: string;
+  baseURL?: string;
+  model?: string;
+}
+
+interface ProviderConfig {
+  apiKey: string;
+  baseURL: string;
+  model: string;
 }
 
 export interface ToolCall {
@@ -29,12 +43,29 @@ export class LLMClient {
   private apiKey: string;
   private baseURL: string;
   private model: string;
+  private imageProvider?: ProviderConfig;
+  private videoProvider?: ProviderConfig;
 
   constructor(config: LLMConfig) {
     this.apiKey = config.apiKey;
     // Ensure baseURL ends without trailing slash
     this.baseURL = config.baseURL.replace(/\/+$/, '');
     this.model = config.model;
+    this.imageProvider = this.normalizeOptionalProvider(config.image);
+    this.videoProvider = this.normalizeOptionalProvider(config.video);
+  }
+
+  private normalizeOptionalProvider(config?: OptionalProviderConfig): ProviderConfig | undefined {
+    if (!config?.apiKey || !config.baseURL || !config.model) return undefined;
+    return {
+      apiKey: config.apiKey,
+      baseURL: config.baseURL.replace(/\/+$/, ''),
+      model: config.model,
+    };
+  }
+
+  hasImageGeneration(): boolean {
+    return Boolean(this.imageProvider);
   }
 
   formatTools(tools: Tool[]): Array<{ type: 'function'; function: Record<string, unknown> }> {
@@ -48,16 +79,18 @@ export class LLMClient {
     }));
   }
 
-  /** Generate an image using CogView API (same base URL & API key). Returns URL or null on failure. */
+  /** Generate an image using the optional configured image provider. Returns URL or null on failure. */
   async generateImage(prompt: string): Promise<string | null> {
+    if (!this.imageProvider) return null;
+
     try {
-      const response = await fetch(`${this.baseURL}/images/generations`, {
+      const response = await fetch(`${this.imageProvider.baseURL}/images/generations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.imageProvider.apiKey}`,
         },
-        body: JSON.stringify({ model: 'cogview-3-plus', prompt }),
+        body: JSON.stringify({ model: this.imageProvider.model, prompt }),
       });
       if (!response.ok) return null;
       const data = await response.json();
@@ -67,16 +100,18 @@ export class LLMClient {
     }
   }
 
-  /** Generate a video using CogVideoX API. Returns task ID for async polling. */
+  /** Generate a video using the optional configured video provider. Returns task ID for async polling. */
   async generateVideoTask(prompt: string): Promise<string | null> {
+    if (!this.videoProvider) return null;
+
     try {
-      const response = await fetch(`${this.baseURL}/videos/generations`, {
+      const response = await fetch(`${this.videoProvider.baseURL}/videos/generations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.videoProvider.apiKey}`,
         },
-        body: JSON.stringify({ model: 'cogvideox', prompt }),
+        body: JSON.stringify({ model: this.videoProvider.model, prompt }),
       });
       if (!response.ok) return null;
       const data = await response.json();
@@ -88,11 +123,13 @@ export class LLMClient {
 
   /** Poll for async video generation result. Returns video URL or null. */
   async pollVideoResult(taskId: string, maxAttempts = 30): Promise<string | null> {
+    if (!this.videoProvider) return null;
+
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       try {
-        const response = await fetch(`${this.baseURL}/async-result/${taskId}`, {
-          headers: { Authorization: `Bearer ${this.apiKey}` },
+        const response = await fetch(`${this.videoProvider.baseURL}/async-result/${taskId}`, {
+          headers: { Authorization: `Bearer ${this.videoProvider.apiKey}` },
         });
         if (!response.ok) continue;
         const data = await response.json();

@@ -143,7 +143,7 @@ The full pipeline progresses through 5 stages:
 | **Markovian State Rebuild** | Bounded context growth via evolving report compression |
 | **Real-time Visualization** | Pipeline progress, prompt composition, streaming indicators, loop diagrams |
 | **Streaming LLM** | Token-level streaming keeps SSE connections alive, prevents serverless timeouts |
-| **Multimedia Reports** | Mermaid diagrams (client-side), AI-generated images (CogView), rich Markdown |
+| **Multimedia Reports** | Mermaid diagrams (client-side), optional AI-generated images, rich Markdown |
 | **Graceful Degradation** | Deadline mechanism, partial results, `Promise.allSettled` for agent failures |
 | **Educational UX** | Auto-expanding concept explanations, phase annotations, context window bar |
 
@@ -170,11 +170,11 @@ This project is purpose-built for **teaching AI agent concepts**. Key educationa
 |-------|-----------|
 | Frontend | React 19, Vite 6, React Router, Mermaid.js, DOMPurify |
 | Backend | TypeScript, Vercel Serverless Functions |
-| LLM | ZhipuAI GLM-4-Plus (OpenAI-compatible API) |
+| LLM | Volcengine Ark CodingPlan (OpenAI-compatible API) |
 | Search | Tavily API |
 | Web Reader | Jina Reader API |
 | Scholar | Serper API |
-| Images | CogView API (AI image generation) |
+| Images | Optional image provider, disabled unless configured |
 | Deployment | Vercel (Hobby / Pro) |
 
 ---
@@ -222,7 +222,7 @@ docs/
 ### Prerequisites
 
 - Node.js 18+
-- API keys: ZhipuAI (LLM), Tavily (search), Jina (web reader)
+- API keys: Volcengine Ark (LLM), Tavily (search), Jina (web reader)
 
 ### Setup
 
@@ -249,12 +249,14 @@ Set environment variables in Vercel dashboard:
 
 | Variable | Value |
 |----------|-------|
-| `LLM_API_KEY` | ZhipuAI API key |
-| `LLM_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` |
-| `LLM_MODEL` | `glm-4-plus` |
+| `ARK_API_KEY` | Volcengine Ark API key |
+| `ARK_BASE_URL` | `https://ark.cn-beijing.volces.com/api/coding/v3` |
+| `ARK_CHAT_MODEL` | `doubao-seed-2-0-code-preview-260215` |
 | `TAVILY_API_KEY` | Tavily search API key |
 | `JINA_API_KEY` | Jina reader API key |
 | `SERPER_API_KEY` | (optional) Serper scholar API key |
+| `ARK_IMAGE_API_KEY` / `ARK_IMAGE_BASE_URL` / `ARK_IMAGE_MODEL` | Optional image provider; leave unset unless verified |
+| `ARK_VIDEO_API_KEY` / `ARK_VIDEO_BASE_URL` / `ARK_VIDEO_MODEL` | Optional video provider; leave unset unless verified |
 | `FUNCTION_TIMEOUT` | `60` (Hobby) or `300` (Pro plan) |
 
 ---

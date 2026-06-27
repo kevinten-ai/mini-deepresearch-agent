@@ -113,6 +113,7 @@ export class Orchestrator extends EventEmitter {
       };
       const synthesizer = new Synthesizer(
         (msgs) => this.llm.chatStream(msgs, undefined, onSynthToken, options?.signal),
+        { enableImagePlaceholders: this.llm.hasImageGeneration() },
       );
       const synthesis = await synthesizer.synthesize(
         request.query,
@@ -133,7 +134,7 @@ export class Orchestrator extends EventEmitter {
 
     this.emit('synthesis:complete', { output: finalOutput });
 
-    // Media enrichment: replace ![IMAGE:...] placeholders with generated images
+    // Media enrichment: replace ![IMAGE:...] placeholders when an image provider is configured
     finalOutput = await this.enrichMedia(finalOutput);
 
     const result: ResearchResult = {
@@ -157,7 +158,7 @@ export class Orchestrator extends EventEmitter {
     return result;
   }
 
-  /** Replace ![IMAGE:description] placeholders with AI-generated images via CogView API */
+  /** Replace ![IMAGE:description] placeholders with AI-generated images when configured. */
   private async enrichMedia(content: string): Promise<string> {
     const regex = /!\[IMAGE:(.*?)\]/g;
     const matches = [...content.matchAll(regex)];
